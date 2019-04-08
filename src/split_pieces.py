@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import random
+import math
 
 
 def read_img(path):
@@ -11,8 +13,140 @@ def read_img(path):
     return img_color, img_gray
 
 
+def calculateH(p1, p2, p3, p4):  # need to contain the original and final point
+    A = np.matrix([
+        [0, 0, 0, -p1[0], -p1[1], -1, p1[3]*p1[0], p1[3]*p1[1], p1[3]],
+        [p1[0], p1[1], 1, 0, 0, 0, -p1[2]*p1[0], -p1[2]*p1[1], -p1[2]],
+        [0, 0, 0, -p2[0], -p2[1], -1, p2[3]*p2[0], p2[3]*p2[1], p2[3]],
+        [p2[0], p2[1], 1, 0, 0, 0, -p2[2]*p2[0], -p2[2]*p2[1], -p2[2]],
+        [0, 0, 0, -p3[0], -p3[1], -1, p3[3]*p3[0], p3[3]*p3[1], p3[3]],
+        [p3[0], p3[1], 1, 0, 0, 0, -p3[2]*p3[0], -p3[2]*p3[1], -p3[2]],
+        [0, 0, 0, -p4[0], -p4[1], -1, p4[3]*p4[0], p4[3]*p4[1], p4[3]],
+        [p4[0], p4[1], 1, 0, 0, 0, -p4[2]*p4[0], -p4[2]*p4[1], -p4[2]]
+    ])
+
+    u, s, vh = np.linalg.svd(A)
+    h = vh[-1].tolist()[0]
+    h = np.matrix(h).reshape((3, 3))
+    return h
+
+
+def findMatchings(D1, D2):
+    matchings = []
+
+    [mean, stdev] = cv2.meanStdDev(D1)
+    D1 = (D1 - mean) / stdev
+    [mean, stdev] = cv2.meanStdDev(D2)
+    D2 = (D2 - mean) / stdev
+    for (id1, d1) in enumerate(D1):
+        #     Initialize best and second best match
+        bestMatch = (0, euclidDist(d1, D2[0]))  # index, distance
+        secondBestMatch = (1, euclidDist(d1, D2[1]))
+        if bestMatch[1] < secondBestMatch[1]:
+            temp = bestMatch
+            bestMatch = secondBestMatch
+            secondBestMatch = temp
+
+        for (id2, d2) in enumerate(D2):
+            distance = euclidDist(d1, d2)
+            if distance < bestMatch[1]:
+                secondBestMatch = bestMatch
+                bestMatch = (id2, distance)
+            elif distance < secondBestMatch[1]:
+                secondBestMatch = (id2, distance)
+        ratio = bestMatch[1] / secondBestMatch[1]
+        if ratio < 0.8:  # threshold
+            matchings.append((id1, bestMatch[0]))
+    return matchings
+
+
+def euclidDist(d1, d2):
+    return np.linalg.norm(d1-d2)
+
+
+def getPoints(kp1, kp2, matches, numPoints):
+    indexes = random.sample(range(0, len(matches)), numPoints)
+    points = []
+    for i in indexes:
+        points.append(pointPairToPoint(
+            kp1[matches[i][0]].pt, kp2[matches[i][1]].pt))
+    return points
+
+
+def getDistForHP(p, H):
+    pi = np.matrix([p[0], p[1], 1])
+    p1f = np.matmul(H, pi.transpose())
+    p1f = p1f.transpose().tolist()[0]
+    p1f = [p1f[0]/p1f[2], p1f[1]/p1f[2]]
+    distance = math.sqrt((p1f[0]-p[2])**2 + (p1f[1]-p[3])**2)
+    return distance
+
+
+def pointPairToPoint(p1, p2):
+    return [p1[0], p1[1], p2[0], p2[1]]
+
+
+def homographyRansac(kp1, kp2, matches):
+    bestNumInliers = 0
+    bestHomography = 0
+    distanceForInlier = 1
+    for i in range(1000):
+        p1, p2, p3, p4 = getPoints(kp1, kp2, matches, 4)
+#     p1, p2, p3, p4 = data[0], data[1], data[2], data[3]
+        H = calculateH(p1, p2, p3, p4)
+        numInliers = 0
+        for match in matches:
+            p = pointPairToPoint(kp1[match[0]].pt, kp2[match[1]].pt)
+            dist = getDistForHP(p, H)
+            if dist < distanceForInlier:
+                numInliers += 1
+        if numInliers > bestNumInliers:
+            bestNumInliers = numInliers
+            bestHomography = H
+    # print(bestNumInliers)
+    return bestHomography
+
+
+def match_piece(piece, solved_kp, solved_desc, finished_gray):
+        # piece is grayscale sub_image of piece
+        # solved_kp are the keypoints in the grayscale solved image
+        # solved_desc are the descriptors for the keypoints in the solved image
+    sift = cv2.xfeatures2d.SIFT_create()
+    kp, des = sift.detectAndCompute(piece, None)
+
+    verified_matches = findMatchings(des, solved_desc)
+
+    H = homographyRansac(kp, solved_kp, verified_matches)
+
+    inlier_matches = []
+
+    num_inliers = 0
+
+    for match in verified_matches:
+        p = pointPairToPoint(kp[match[0]].pt, solved_kp[match[1]].pt)
+        dist = getDistForHP(p, H)
+        if dist < 1:
+            inlier_matches.append(cv2.DMatch(match[0], match[1], 0))
+            num_inliers += 1
+
+    img3 = cv2.drawMatches(piece, kp, finished_gray,
+                           solved_kp, inlier_matches, None, flags=2)
+
+    # Find coordinates on finished puzzle image
+    input_cord = np.array([piece.shape[0]/2, piece.shape[1]/2, 1])
+    output_cord = np.matmul(H, input_cord.transpose()).tolist()[0]
+    output_xy = [int(output_cord[0]/output_cord[2]),
+                 int(output_cord[1]/output_cord[2])]
+    # cv2.rectangle(finished_gray, (output_xy[0]-10, output_xy[1]-10),\
+    #               (output_xy[0]+10, output_xy[1]+10), (0, 255, 0), 2)
+    # plt.imshow(finished_gray)
+    # plt.show()
+    return output_xy
+
+
 def splitPieces():
     pieces_color, pieces_gray = read_img('../data/Fairies_pieces.png')
+    finished_color, finished_gray = read_img('../data/Fairies_complete.png')
 
     # Set up the detector with default parameters.
     detector = cv2.SimpleBlobDetector_create()
@@ -25,25 +159,44 @@ def splitPieces():
     im_with_keypoints = cv2.drawKeypoints(
         pieces_gray, keypoints, None, color=(0, 255, 0), flags=0)
 
-    blurred = cv2.GaussianBlur(pieces_gray, (11, 11), 0)
-    edged = cv2.Canny(blurred, 50, 100)
+    blurred = cv2.GaussianBlur(pieces_gray, (5, 5), 1)
+    blurred = cv2.medianBlur(blurred, 7)
+    ret, thresh1 = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)
+    plt.imsave('./thresh.png', thresh1, cmap='gray')
+
+    edged = cv2.Canny(thresh1, 50, 100)
     dilated = cv2.dilate(edged, None, iterations=1)
     eroded = cv2.erode(dilated, None, iterations=1)
 
     # find contours in the thresholded image and initialize the shape detector
     contours = cv2.findContours(
-        eroded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        thresh1.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = contours[1]
 
-    for contour in contours:
-        if cv2.contourArea(contour) < 100:
+    sift = cv2.xfeatures2d.SIFT_create()
+    (kp_finished, desc_finished) = sift.detectAndCompute(finished_gray, None)
+
+    piece_matches = []
+
+    for index, contour in enumerate(contours):
+        if cv2.contourArea(contour) < 1000:
             continue
-        epsilon = 0.05 * cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, epsilon, True)
-        cv2.drawContours(pieces_color, [approx], -1, (0, 255, 0), 2)
+        print('yeet')
+        x, y, w, h = cv2.boundingRect(contour)
+        crop_img = pieces_gray[y:y+h, x:x+w]
+        plt.imsave('./sub/' + str(index) + '.png', crop_img, cmap='gray')
+        cv2.rectangle(pieces_color, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        finished_point = match_piece(
+            crop_img, kp_finished, desc_finished, finished_gray)
+        pieces_point = (x+w/2, y+h/2)
+        piece_matches.append((pieces_point, finished_point))
+        # epsilon = 0.05 * cv2.arcLength(contour, True)
+        # approx = cv2.approxPolyDP(contour, epsilon, True)
+        # cv2.drawContours(pieces_color, [approx], -1, (0, 255, 0), 2)
 
     # Show keypoints
     plt.imsave('./out.png', pieces_color)
+    print(piece_matches)
 
 
 splitPieces()
