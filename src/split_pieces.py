@@ -13,53 +13,6 @@ def read_img(path):
     return img_color, img_gray
 
 
-def calculateH(p1, p2, p3, p4):  # need to contain the original and final point
-    A = np.matrix([
-        [0, 0, 0, -p1[0], -p1[1], -1, p1[3]*p1[0], p1[3]*p1[1], p1[3]],
-        [p1[0], p1[1], 1, 0, 0, 0, -p1[2]*p1[0], -p1[2]*p1[1], -p1[2]],
-        [0, 0, 0, -p2[0], -p2[1], -1, p2[3]*p2[0], p2[3]*p2[1], p2[3]],
-        [p2[0], p2[1], 1, 0, 0, 0, -p2[2]*p2[0], -p2[2]*p2[1], -p2[2]],
-        [0, 0, 0, -p3[0], -p3[1], -1, p3[3]*p3[0], p3[3]*p3[1], p3[3]],
-        [p3[0], p3[1], 1, 0, 0, 0, -p3[2]*p3[0], -p3[2]*p3[1], -p3[2]],
-        [0, 0, 0, -p4[0], -p4[1], -1, p4[3]*p4[0], p4[3]*p4[1], p4[3]],
-        [p4[0], p4[1], 1, 0, 0, 0, -p4[2]*p4[0], -p4[2]*p4[1], -p4[2]]
-    ])
-
-    u, s, vh = np.linalg.svd(A)
-    h = vh[-1].tolist()[0]
-    h = np.matrix(h).reshape((3, 3))
-    return h
-
-
-def findMatchings(D1, D2):
-    matchings = []
-
-    [mean, stdev] = cv2.meanStdDev(D1)
-    D1 = (D1 - mean) / stdev
-    [mean, stdev] = cv2.meanStdDev(D2)
-    D2 = (D2 - mean) / stdev
-    for (id1, d1) in enumerate(D1):
-        #     Initialize best and second best match
-        bestMatch = (0, euclidDist(d1, D2[0]))  # index, distance
-        secondBestMatch = (1, euclidDist(d1, D2[1]))
-        if bestMatch[1] < secondBestMatch[1]:
-            temp = bestMatch
-            bestMatch = secondBestMatch
-            secondBestMatch = temp
-
-        for (id2, d2) in enumerate(D2):
-            distance = euclidDist(d1, d2)
-            if distance < bestMatch[1]:
-                secondBestMatch = bestMatch
-                bestMatch = (id2, distance)
-            elif distance < secondBestMatch[1]:
-                secondBestMatch = (id2, distance)
-        ratio = bestMatch[1] / secondBestMatch[1]
-        if ratio < 0.8:  # threshold
-            matchings.append((id1, bestMatch[0]))
-    return matchings
-
-
 def euclidDist(d1, d2):
     return np.linalg.norm(d1-d2)
 
@@ -86,27 +39,6 @@ def pointPairToPoint(p1, p2):
     return [p1[0], p1[1], p2[0], p2[1]]
 
 
-def homographyRansac(kp1, kp2, matches):
-    bestNumInliers = 0
-    bestHomography = 0
-    distanceForInlier = 1
-    for i in range(1000):
-        p1, p2, p3, p4 = getPoints(kp1, kp2, matches, 4)
-#     p1, p2, p3, p4 = data[0], data[1], data[2], data[3]
-        H = calculateH(p1, p2, p3, p4)
-        numInliers = 0
-        for match in matches:
-            p = pointPairToPoint(kp1[match[0]].pt, kp2[match[1]].pt)
-            dist = getDistForHP(p, H)
-            if dist < distanceForInlier:
-                numInliers += 1
-        if numInliers > bestNumInliers:
-            bestNumInliers = numInliers
-            bestHomography = H
-    # print(bestNumInliers)
-    return bestHomography
-
-
 def match_piece(piece, solved_kp, solved_desc, finished_gray):
         # piece is grayscale sub_image of piece
         # solved_kp are the keypoints in the grayscale solved image
@@ -114,9 +46,33 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
     sift = cv2.xfeatures2d.SIFT_create()
     kp, des = sift.detectAndCompute(piece, None)
 
-    verified_matches = findMatchings(des, solved_desc)
+    # Match features.
+    bf = cv2.BFMatcher()
+    matches = bf.knnMatch(des, solved_desc, k=2)
+    
+    # Apply ratio test
+    good = []
+    for m,n in matches:
+        if m.distance < 0.75*n.distance:
+            good.append(m)
+    
 
-    H = homographyRansac(kp, solved_kp, verified_matches)
+
+    points1 = np.zeros((len(good), 2), dtype=np.float32)
+    points2 = np.zeros((len(good), 2), dtype=np.float32)
+    
+    verified_matches = []
+    
+    for i, match in enumerate(good):
+        points1[i, :] = kp[match.queryIdx].pt
+        points2[i, :] = solved_kp[match.trainIdx].pt
+        verified_matches.append((match.queryIdx, match.trainIdx))
+    
+    # Find homography
+    H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
+
+    if H == None:
+        raise Exception("ERROR")
 
     inlier_matches = []
 
@@ -134,9 +90,10 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
 
     # Find coordinates on finished puzzle image
     input_cord = np.array([piece.shape[0]/2, piece.shape[1]/2, 1])
-    output_cord = np.matmul(H, input_cord.transpose()).tolist()[0]
-    output_xy = [int(output_cord[0]/output_cord[2]),
-                 int(output_cord[1]/output_cord[2])]
+    output_cord = np.matmul(H, input_cord.transpose())
+
+    output_xy = (int(output_cord[0]/output_cord[2]),
+                 int(output_cord[1]/output_cord[2]))
     # cv2.rectangle(finished_gray, (output_xy[0]-10, output_xy[1]-10),\
     #               (output_xy[0]+10, output_xy[1]+10), (0, 255, 0), 2)
     # plt.imshow(finished_gray)
@@ -185,15 +142,19 @@ def splitPieces():
         x, y, w, h = cv2.boundingRect(contour)
         crop_img = pieces_gray[y:y+h, x:x+w]
         plt.imsave('./sub/' + str(index) + '.png', crop_img, cmap='gray')
-        cv2.rectangle(pieces_color, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        finished_point = match_piece(
-            crop_img, kp_finished, desc_finished, finished_gray)
-        pieces_point = (x+w/2, y+h/2)
-        piece_matches.append((pieces_point, finished_point))
+        cv2.rectangle(pieces_color, (x, y), (x+w, y+h), (0, 1, 0), 2)
+        try:
+            finished_point = match_piece(
+                crop_img, kp_finished, desc_finished, finished_gray)
+            pieces_point = (x+w/2, y+h/2)
+            piece_matches.append((pieces_point, finished_point))
+            print((pieces_point, finished_point))
+        except:
+            print("in exception, match_piece failed")
         # epsilon = 0.05 * cv2.arcLength(contour, True)
         # approx = cv2.approxPolyDP(contour, epsilon, True)
         # cv2.drawContours(pieces_color, [approx], -1, (0, 255, 0), 2)
-
+    print(piece_matches)
     # Show keypoints
     plt.imsave('./out.png', pieces_color)
     print(piece_matches)
