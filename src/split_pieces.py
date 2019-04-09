@@ -13,17 +13,6 @@ def read_img(path):
     return img_color, img_gray
 
 
-def euclidDist(d1, d2):
-    return np.linalg.norm(d1-d2)
-
-
-def getPoints(kp1, kp2, matches, numPoints):
-    indexes = random.sample(range(0, len(matches)), numPoints)
-    points = []
-    for i in indexes:
-        points.append(pointPairToPoint(
-            kp1[matches[i][0]].pt, kp2[matches[i][1]].pt))
-    return points
 
 
 def getDistForHP(p, H):
@@ -148,7 +137,6 @@ def splitPieces():
                 crop_img, kp_finished, desc_finished, finished_gray)
             pieces_point = (x+w/2, y+h/2)
             piece_matches.append((pieces_point, finished_point))
-            print((pieces_point, finished_point))
         except:
             print("in exception, match_piece failed")
         # epsilon = 0.05 * cv2.arcLength(contour, True)
