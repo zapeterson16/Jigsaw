@@ -58,6 +58,8 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
     H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
 
     if H == None:
+        
+        print(len(good))
         raise Exception("ERROR")
 
     inlier_matches = []
@@ -88,8 +90,8 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
 
 
 def splitPieces():
-    pieces_color, pieces_gray = read_img('../data/fairies_pieces_better.png')
-    finished_color, finished_gray = read_img('../data/fairies_complete_box.png')
+    pieces_color, pieces_gray = read_img('../data/Fairies.png')
+    finished_color, finished_gray = read_img('../data/Fairies_complete.png')
 
     # Set up the detector with default parameters.
     detector = cv2.SimpleBlobDetector_create()
@@ -136,21 +138,23 @@ def splitPieces():
         x, y, w, h = cv2.boundingRect(contour)
         crop_img = pieces_gray[y:y+h, x:x+w]
         # plt.imsave('./sub/' + str(index) + '.png', crop_img, cmap='gray')
+        cv2.rectangle(pieces_color, (x, y), (x+w, y+h), (0, 1, 0), 2)
+
         try:
             finished_point = match_piece(
                 crop_img, kp_finished, desc_finished, finished_gray)
             pieces_point = (x+w/2, y+h/2)
             piece_matches.append((pieces_point, finished_point))
         except:
-            cv2.rectangle(pieces_color, (x, y), (x+w, y+h), (0, 1, 0), 2)
             print("in exception, match_piece failed")
         # epsilon = 0.05 * cv2.arcLength(contour, True)
         # approx = cv2.approxPolyDP(contour, epsilon, True)
         # cv2.drawContours(pieces_color, [approx], -1, (0, 255, 0), 2)
     print(len(piece_matches))
+    np.save('piece_matches.npy', piece_matches)
     # Show keypoints
     plt.imsave('./out.png', pieces_color)
-    # print(piece_matches)
+    print(piece_matches)
 
 
 splitPieces()
