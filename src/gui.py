@@ -76,13 +76,13 @@ y1 = 0
 x2 = 1008
 y2 = 756
 
-image = Image.open("../data/Fairies_pieces.png")
+image = Image.open("../data/Parks_Pieces.png")
 image = image.resize((504, 378), Image.ANTIALIAS)
 photo = ImageTk.PhotoImage(image)
 image_id = cv.create_image(0,0,image=photo, anchor=tk.NW)
 cv.tag_bind(image_id, "<1>", showxy)
 
-image2 = Image.open("../data/Fairies_complete.png")
+image2 = Image.open("../data/Parks_solved.jpg")
 image2 = image2.resize((504, 378), Image.ANTIALIAS)
 photo2 = ImageTk.PhotoImage(image2)
 image_id2 = cv.create_image(510,0,image=photo2, anchor=tk.NW)

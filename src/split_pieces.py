@@ -89,8 +89,8 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
 
 
 def splitPieces():
-    pieces_color, pieces_gray = read_img('../data/Fairies.png')
-    finished_color, finished_gray = read_img('../data/Fairies_complete.png')
+    pieces_color, pieces_gray = read_img('../data/Parks_Pieces.png')
+    finished_color, finished_gray = read_img('../data/Parks_solved.jpg')
 
     # Set up the detector with default parameters.
     detector = cv2.SimpleBlobDetector_create()
@@ -105,8 +105,8 @@ def splitPieces():
 
     blurred = cv2.GaussianBlur(pieces_gray, (5, 5), 1)
     blurred = cv2.medianBlur(blurred, 7)
-    ret, thresh1 = cv2.threshold(blurred, 45, 255, cv2.THRESH_BINARY)
-    # plt.imsave('./thresh.png', thresh1, cmap='gray')
+    ret, thresh1 = cv2.threshold(blurred, 55, 255, cv2.THRESH_BINARY)
+    plt.imsave('./thresh.png', thresh1, cmap='gray')
 
 
     # edged = cv2.Canny(blurred, 0, 150)
@@ -114,11 +114,12 @@ def splitPieces():
     # eroded = cv2.erode(dilated, None, iterations=1)
 
     # ret, thresh1 = cv2.threshold(dilated, 30, 255, cv2.THRESH_BINARY)
-    plt.imshow(thresh1)
+    # plt.imshow(thresh1)
     # plt.show()
     # plt.imshow(thresh1)
     # plt.show()
     # exit()
+
 
     # find contours in the thresholded image and initialize the shape detector
     contours = cv2.findContours(
@@ -131,7 +132,7 @@ def splitPieces():
     piece_matches = []
 
     for index, contour in enumerate(contours):
-        if cv2.contourArea(contour) < 3000:
+        if cv2.contourArea(contour) < 1000:
             continue
         print('yeet')
         x, y, w, h = cv2.boundingRect(contour)
