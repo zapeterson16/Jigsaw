@@ -57,8 +57,7 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
     # Find homography
     H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
 
-    if H == None:
-        
+    if not H.any():        
         print(len(good))
         raise Exception("ERROR")
 
