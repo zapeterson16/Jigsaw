@@ -90,7 +90,7 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
 
 def splitPieces():
     pieces_color, pieces_gray = read_img('../data/Parks_Pieces.png')
-    finished_color, finished_gray = read_img('../data/Parks_solved.jpg')
+    finished_color, finished_gray = read_img('../data/Parks_Complete_Puzzle.jpeg')
 
     # Set up the detector with default parameters.
     detector = cv2.SimpleBlobDetector_create()
@@ -105,7 +105,7 @@ def splitPieces():
 
     blurred = cv2.GaussianBlur(pieces_gray, (5, 5), 1)
     blurred = cv2.medianBlur(blurred, 7)
-    ret, thresh1 = cv2.threshold(blurred, 55, 255, cv2.THRESH_BINARY)
+    ret, thresh1 = cv2.threshold(blurred, 53, 255, cv2.THRESH_BINARY)
     plt.imsave('./thresh.png', thresh1, cmap='gray')
 
 
@@ -126,13 +126,17 @@ def splitPieces():
         thresh1.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = contours[1]
 
+    # cv2.drawContours(pieces_color, contours, -1, (0,255,0), 3)
+    # plt.imsave('./contours.png', pieces_color)
+    # exit()
+
     sift = cv2.xfeatures2d.SIFT_create()
     (kp_finished, desc_finished) = sift.detectAndCompute(finished_gray, None)
 
     piece_matches = []
 
     for index, contour in enumerate(contours):
-        if cv2.contourArea(contour) < 1000:
+        if cv2.contourArea(contour) < 3000 or cv2.contourArea(contour) > 20000:
             continue
         print('yeet')
         x, y, w, h = cv2.boundingRect(contour)
