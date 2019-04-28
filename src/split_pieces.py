@@ -57,14 +57,14 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
     # Find homography
     H, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
 
+    # If no homography is found throw an exception
     if not H.any():        
         print(len(good))
         raise Exception("ERROR")
 
+    # Check for inlier matches
     inlier_matches = []
-
     num_inliers = 0
-
     for match in verified_matches:
         p = pointPairToPoint(kp[match[0]].pt, solved_kp[match[1]].pt)
         dist = getDistForHP(p, H)
@@ -81,10 +81,6 @@ def match_piece(piece, solved_kp, solved_desc, finished_gray):
 
     output_xy = (int(output_cord[0]/output_cord[2]),
                  int(output_cord[1]/output_cord[2]))
-    # cv2.rectangle(finished_gray, (output_xy[0]-10, output_xy[1]-10),\
-    #               (output_xy[0]+10, output_xy[1]+10), (0, 255, 0), 2)
-    # plt.imshow(finished_gray)
-    # plt.show()
     return output_xy
 
 
@@ -103,21 +99,13 @@ def splitPieces():
     im_with_keypoints = cv2.drawKeypoints(
         pieces_gray, keypoints, None, color=(0, 255, 0), flags=0)
 
+    # blur image
     blurred = cv2.GaussianBlur(pieces_gray, (5, 5), 1)
     blurred = cv2.medianBlur(blurred, 7)
+
+    # apply threshold
     ret, thresh1 = cv2.threshold(blurred, 53, 255, cv2.THRESH_BINARY)
     plt.imsave('./thresh.png', thresh1, cmap='gray')
-
-
-    # edged = cv2.Canny(blurred, 0, 150)
-    # dilated = cv2.dilate(edged, None, iterations=1)
-    # eroded = cv2.erode(dilated, None, iterations=1)
-
-    # ret, thresh1 = cv2.threshold(dilated, 30, 255, cv2.THRESH_BINARY)
-    # plt.imshow(thresh1)
-    # plt.show()
-    # plt.imshow(thresh1)
-    # plt.show()
     # exit()
 
 
@@ -151,14 +139,13 @@ def splitPieces():
             piece_matches.append((pieces_point, finished_point))
         except:
             print("in exception, match_piece failed")
-        # epsilon = 0.05 * cv2.arcLength(contour, True)
-        # approx = cv2.approxPolyDP(contour, epsilon, True)
-        # cv2.drawContours(pieces_color, [approx], -1, (0, 255, 0), 2)
     print(len(piece_matches))
+    
+    # Save the data which is imported by the gui
     np.save('piece_matches.npy', piece_matches)
-    # Show keypoints
+
+    # out.png displays the bounding boxes around each identified piece
     plt.imsave('./out.png', pieces_color)
     print(piece_matches)
-
 
 splitPieces()
